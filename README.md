@@ -71,6 +71,23 @@ repository root. Without it, Jekyll filters files out of the published build.
 works on `https://` and on `localhost`, but not on a plain `http://` host or a
 `file://` path.
 
+**"The camera is in use by another app."** This is the browser's
+`NotReadableError`. Genuinely close other apps or tabs holding the camera
+first — but if it appears when *switching* cameras, that is this page's own
+previous stream still attached; fixed by detaching `srcObject` on release.
+Reload if you are on an older cached copy.
+
+**No faces detected on a phone.** Open the **Diagnostics** card under the video.
+It reports capture resolution, the active backend, frame rate, faces found, and
+the last error. Common causes:
+
+| Diagnostics show | Cause | Fix |
+|---|---|---|
+| Frame rate under ~3 fps | Detector input too large for the device | The page drops it once automatically; lower it further in *Detector settings* |
+| `backend: cpu` in the header | WebGL missing, or it failed the numeric self-check | Expected to be slow; try a different browser |
+| A message under *Last error* | Inference is failing, not the camera | Report that message |
+| Faces `0` with good frame rate | Face too small, too dark, or too far off-axis | Move closer, add light, face the camera; or raise input size and lower min confidence |
+
 ## What the numbers mean — and don't
 
 This matters more than the feature list.

@@ -25,24 +25,62 @@ export const EXPRESSION_COLOR = {
 
 let ready = null;
 
-/** Loads the nets once; repeat calls share the same promise. */
+/**
+ * Verifies the active backend actually computes correctly.
+ *
+ * Some mobile GPUs advertise WebGL but have broken float-texture precision, so
+ * tf ops silently return garbage. The nets then run happily and produce zero
+ * detections, which is indistinguishable from "no face in shot" unless we check.
+ * A couple of exact arithmetic round-trips catch it before the user does.
+ */
+async function backendIsSane(tf) {
+  const t = tf.tensor2d([[0.5, -0.25], [1.5, 2]]);
+  try {
+    const sq = await t.square().data();
+    const sum = await t.sum().data();
+    const expected = [0.25, 0.0625, 2.25, 4];
+    const okSquare = expected.every((v, i) => Number.isFinite(sq[i]) && Math.abs(sq[i] - v) < 1e-2);
+    const okSum = Number.isFinite(sum[0]) && Math.abs(sum[0] - 3.75) < 1e-2;
+    return okSquare && okSum;
+  } catch {
+    return false;
+  } finally {
+    tf.dispose(t);
+  }
+}
+
+/**
+ * Loads the nets once; repeat calls share the same promise.
+ *
+ * @returns {Promise<{backend: string, note: string|null}>}
+ */
 export function loadModels() {
   if (ready) return ready;
   ready = (async () => {
     const { nets, tf } = faceapi;
+    let note = null;
+
     try {
       await tf.setBackend('webgl');
+      await tf.ready();
+      if (!await backendIsSane(tf)) {
+        note = 'This device\u2019s WebGL returned incorrect results, so detection fell back to the CPU.';
+        await tf.setBackend('cpu');
+        await tf.ready();
+      }
     } catch {
+      note = 'WebGL was unavailable, so detection fell back to the CPU.';
       await tf.setBackend('cpu');
+      await tf.ready();
     }
-    await tf.ready();
+
     await Promise.all([
       nets.tinyFaceDetector.loadFromUri(MODEL_URL),
       nets.faceLandmark68Net.loadFromUri(MODEL_URL),
       nets.faceExpressionNet.loadFromUri(MODEL_URL),
       nets.ageGenderNet.loadFromUri(MODEL_URL),
     ]);
-    return tf.getBackend();
+    return { backend: tf.getBackend(), note };
   })();
   return ready;
 }

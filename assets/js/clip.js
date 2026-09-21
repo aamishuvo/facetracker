@@ -110,7 +110,9 @@ export function initClip({ toast, setBackend }) {
     analyseBtn.disabled = true;
     analyseBtn.textContent = 'Loading models…';
     try {
-      setBackend(await loadModels());
+      const { backend, note } = await loadModels();
+      setBackend(backend);
+      if (note) toast(note, true);
     } catch {
       toast('Could not load the models.', true);
       analyseBtn.disabled = false;
