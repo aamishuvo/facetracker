@@ -104,7 +104,37 @@ The `MediaStream` is held only while the camera is on:
 Releasing on tab-hide means the camera indicator light goes out when you switch
 away — the page cannot capture in the background.
 
-## 6. Performance notes
+## 6. Camera acquisition, in detail
+
+Three failure modes are handled explicitly, because each produces the same
+unhelpful symptom — a dead preview or an empty overlay.
+
+**Releasing the device.** Stopping a stream's tracks does not release the
+camera while the `<video>` element still references that stream. Android Chrome
+and iOS Safari keep the lens open until `srcObject` is detached, so re-acquiring
+throws `NotReadableError` — which reads as "the camera is in use by another
+app", when the other app is this page. `releaseCamera()` stops the tracks,
+detaches `srcObject`, calls `load()`, and waits briefly for the OS to finish.
+
+**Overlapping acquisition.** A double tap, or a camera switch while the previous
+`getUserMedia` is still resolving, puts two requests against one device. A
+`starting` latch collapses concurrent attempts into one.
+
+**Constraints that a device cannot meet.** Phones throw `OverconstrainedError`
+rather than degrading, and some Android builds report `NotReadableError` for a
+`facingMode` they do not really have. `acquire()` retries through progressively
+plainer constraints — ideal resolution, then facing only, then bare
+`{ video: true }` — and stops immediately on a permission denial, which
+relaxing constraints cannot fix.
+
+**Retiring the previous run.** Restarting increments an epoch counter. This
+matters because detaching the video mid-inference can leave that promise
+permanently unsettled: its `finally` never runs, the `busy` latch stays set, and
+the next loop spins at full frame rate without ever detecting anything. The
+epoch both clears the latch and stops a superseded iteration from writing to the
+canvas after a newer one has started.
+
+## 7. Performance notes
 
 Measured headless with software WebGL (SwiftShader), which is a worst case:
 ~1.7 fps at 416 px input. On real GPU hardware expect roughly 15–30 fps on a
@@ -120,7 +150,7 @@ of effect:
 Total transfer is ~2.6 MB (1.3 MB library, 1.3 MB weights), fetched once and
 then served from cache.
 
-## 7. Deployment
+## 8. Deployment
 
 Static hosting, no build step. On GitHub Pages, set
 **Settings → Pages → Source: Deploy from a branch → `main` / root**, or use the
@@ -135,7 +165,7 @@ Two requirements:
 `models/` must deploy as-is. `.bin` files are served as `application/octet-stream`,
 which is what the loader expects.
 
-## 8. Extending it
+## 9. Extending it
 
 Reasonable additions that don't change the system's character:
 

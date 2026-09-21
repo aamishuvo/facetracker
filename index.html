@@ -92,6 +92,12 @@
       </div>
 
       <div class="card">
+        <h3>Diagnostics</h3>
+        <div id="liveDiag"><p class="empty">No camera running.</p></div>
+        <p class="hint">If faces are not being found, these are the numbers worth reporting.</p>
+      </div>
+
+      <div class="card">
         <h3>Detector settings</h3>
         <label class="field">
           <span>Input size <b id="inputSizeVal">416</b> px</span>
@@ -101,7 +107,8 @@
           <span>Min confidence <b id="scoreVal">0.50</b></span>
           <input type="range" id="scoreThr" min="0.1" max="0.9" step="0.05" value="0.5">
         </label>
-        <p class="hint">Larger input = more small faces found, lower frame rate. Drop to 224 on a phone.</p>
+        <p class="hint">Larger input = more small faces found, lower frame rate. Phones start at 288;
+          if the frame rate still sits below 4&nbsp;fps the page drops it once on its own.</p>
       </div>
     </aside>
   </div>
