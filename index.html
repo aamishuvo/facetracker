@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>FaceTracker — on-device face &amp; expression demo</title>
+<meta name="description" content="A privacy-preserving, fully on-device demo that detects faces and estimates apparent age and facial expression from your webcam or a video clip. Nothing is uploaded.">
+<meta name="color-scheme" content="dark light">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><rect width='64' height='64' rx='14' fill='%230b0f14'/><g fill='none' stroke='%2364e3b0' stroke-width='4'><rect x='16' y='16' width='32' height='32' rx='6'/><circle cx='26' cy='30' r='2.5' fill='%2364e3b0'/><circle cx='38' cy='30' r='2.5' fill='%2364e3b0'/><path d='M25 39q7 5 14 0' stroke-linecap='round'/></g></svg>">
+<link rel="stylesheet" href="./assets/css/app.css">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <span class="brand-mark" aria-hidden="true"></span>
+    <div>
+      <h1>FaceTracker</h1>
+      <p class="brand-sub">On-device face &amp; expression analysis</p>
+    </div>
+  </div>
+  <div class="topbar-right">
+    <span class="pill pill-ok" title="All inference runs in this browser tab.">100% on-device</span>
+    <span class="pill" id="backendPill" title="TensorFlow.js compute backend">backend: —</span>
+  </div>
+</header>
+
+<div class="notice" role="note">
+  <strong>What this is.</strong> A demo that runs four small neural networks inside your browser tab to find faces and
+  guess <em>apparent</em> age and <em>expression</em>. Your video never leaves your device — there is no server, no
+  upload, and no recording.
+  <strong>What it is not.</strong> It cannot identify anyone, and it cannot detect intent, honesty, or criminality.
+  <a href="./docs/SCOPE-AND-LIMITS.md">Read the limits &rarr;</a>
+</div>
+
+<nav class="tabs" role="tablist">
+  <button class="tab is-active" role="tab" aria-selected="true"  aria-controls="panel-live" id="tab-live">Live camera</button>
+  <button class="tab"           role="tab" aria-selected="false" aria-controls="panel-clip" id="tab-clip">Video clip</button>
+  <button class="tab"           role="tab" aria-selected="false" aria-controls="panel-about" id="tab-about">About &amp; limits</button>
+</nav>
+
+<main>
+
+<!-- ─────────────────────────── LIVE ─────────────────────────── -->
+<section class="panel is-active" id="panel-live" role="tabpanel" aria-labelledby="tab-live">
+  <div class="layout">
+    <div class="stage-wrap">
+      <div class="stage" id="liveStage">
+        <video id="video" playsinline muted autoplay></video>
+        <canvas id="overlay"></canvas>
+
+        <div class="stage-gate" id="gate">
+          <div class="gate-card">
+            <div class="gate-icon" aria-hidden="true"></div>
+            <h2>Enable your camera</h2>
+            <p>
+              Your browser will ask for permission. The video stream is processed locally by this page and is
+              <strong>never transmitted, recorded, or stored</strong>. Stopping the camera discards everything.
+            </p>
+            <button class="btn btn-primary btn-lg" id="startBtn">Allow camera access</button>
+            <p class="gate-foot" id="gateFoot">Requires a secure context (https:// or localhost).</p>
+          </div>
+        </div>
+
+        <div class="stage-hud">
+          <span class="hud-chip" id="fpsChip">— fps</span>
+          <span class="hud-chip" id="facesChip">0 faces</span>
+        </div>
+      </div>
+
+      <div class="stage-bar">
+        <button class="btn" id="stopBtn" disabled>Stop camera</button>
+        <button class="btn" id="flipBtn" disabled>Switch camera</button>
+        <button class="btn" id="snapBtn" disabled>Save snapshot</button>
+        <label class="check"><input type="checkbox" id="mirrorChk" checked> Mirror</label>
+        <label class="check"><input type="checkbox" id="meshChk"> Landmarks</label>
+      </div>
+    </div>
+
+    <aside class="side">
+      <div class="card">
+        <h3>Detected faces</h3>
+        <div id="liveFaces" class="faces">
+          <p class="empty">No camera running.</p>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>Expression over time</h3>
+        <canvas id="moodStrip" class="mood-strip" height="64"></canvas>
+        <p class="hint">Rolling 60&nbsp;s of the dominant expression for the largest face. In-memory only.</p>
+      </div>
+
+      <div class="card">
+        <h3>Detector settings</h3>
+        <label class="field">
+          <span>Input size <b id="inputSizeVal">416</b> px</span>
+          <input type="range" id="inputSize" min="128" max="608" step="32" value="416">
+        </label>
+        <label class="field">
+          <span>Min confidence <b id="scoreVal">0.50</b></span>
+          <input type="range" id="scoreThr" min="0.1" max="0.9" step="0.05" value="0.5">
+        </label>
+        <p class="hint">Larger input = more small faces found, lower frame rate. Drop to 224 on a phone.</p>
+      </div>
+    </aside>
+  </div>
+</section>
+
+<!-- ─────────────────────────── CLIP ─────────────────────────── -->
+<section class="panel" id="panel-clip" role="tabpanel" aria-labelledby="tab-clip">
+  <div class="layout">
+    <div class="stage-wrap">
+      <div class="stage" id="clipStage">
+        <video id="clipVideo" playsinline controls></video>
+        <canvas id="clipOverlay"></canvas>
+
+        <div class="stage-gate" id="clipGate">
+          <div class="gate-card drop" id="dropZone">
+            <div class="gate-icon gate-icon-file" aria-hidden="true"></div>
+            <h2>Analyse a video clip</h2>
+            <p>Drop a video here, or choose a file. It is opened directly from your disk &mdash; nothing is uploaded.</p>
+            <button class="btn btn-primary btn-lg" id="pickBtn">Choose a video</button>
+            <input type="file" id="fileInput" accept="video/*" hidden>
+            <p class="gate-foot">MP4 / WebM / MOV, whatever your browser can decode.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="stage-bar">
+        <button class="btn btn-primary" id="analyseBtn" disabled>Analyse clip</button>
+        <button class="btn" id="cancelBtn" disabled>Cancel</button>
+        <label class="field field-inline">
+          <span>Sample every <b id="stepVal">0.50</b> s</span>
+          <input type="range" id="stepSec" min="0.1" max="2" step="0.1" value="0.5">
+        </label>
+        <button class="btn" id="clearClipBtn" disabled>Clear</button>
+      </div>
+
+      <div class="progress" id="progressWrap" hidden>
+        <div class="progress-bar"><span id="progressFill"></span></div>
+        <span class="progress-label" id="progressLabel">0%</span>
+      </div>
+
+      <div class="timeline-wrap" id="timelineWrap" hidden>
+        <canvas id="timeline" class="timeline" height="88"></canvas>
+        <p class="hint">Click the timeline to jump. Bar height = faces found; colour = dominant expression.</p>
+      </div>
+    </div>
+
+    <aside class="side">
+      <div class="card">
+        <h3>Faces at playhead</h3>
+        <div id="clipFaces" class="faces"><p class="empty">No clip loaded.</p></div>
+      </div>
+
+      <div class="card">
+        <h3>Clip summary</h3>
+        <div id="clipSummary"><p class="empty">Run an analysis to see aggregates.</p></div>
+      </div>
+
+      <div class="card">
+        <h3>Export</h3>
+        <div class="row">
+          <button class="btn" id="exportJson" disabled>JSON</button>
+          <button class="btn" id="exportCsv"  disabled>CSV</button>
+        </div>
+        <p class="hint">Per-sample detections, written straight to your downloads folder.</p>
+      </div>
+    </aside>
+  </div>
+</section>
+
+<!-- ─────────────────────────── ABOUT ─────────────────────────── -->
+<section class="panel" id="panel-about" role="tabpanel" aria-labelledby="tab-about">
+  <div class="prose">
+    <h2>How it works</h2>
+    <p>
+      Everything happens in this tab. When you enable the camera or open a clip, four models are fetched once from this
+      site and then run against each sampled frame using WebGL on your GPU:
+    </p>
+    <ol>
+      <li><b>TinyFaceDetector</b> &mdash; finds face bounding boxes.</li>
+      <li><b>FaceLandmark68</b> &mdash; places 68 landmark points, used to align each face.</li>
+      <li><b>FaceExpressionNet</b> &mdash; scores 7 expression classes on the aligned crop.</li>
+      <li><b>AgeNet</b> &mdash; regresses an apparent-age estimate.</li>
+    </ol>
+    <p>
+      There is no backend. Open your browser's network panel: after the model files load, the page makes no further
+      requests. That is the whole privacy story &mdash; not a policy promise, an architectural one.
+    </p>
+
+    <h2>Three things the numbers do not mean</h2>
+    <p>
+      <b>Age is a guess about appearance, not a birthday.</b> Published error for this class of model runs roughly
+      &plusmn;4&ndash;8 years, and it is worst on the faces least represented in its training data &mdash; children, older
+      adults, and darker skin tones. Treat the range, not the number.
+    </p>
+    <p>
+      <b>"Expression" is not "emotion".</b> The model scores what a face is <em>doing</em>. A large body of affective-science
+      research finds that facial configurations map only weakly and inconsistently onto what a person actually
+      feels, and that the mapping varies by person, culture and context. A "happy" reading means the mouth
+      corners are raised. It does not mean the person is happy.
+    </p>
+    <p>
+      <b>Nothing here infers intent.</b> No face model can tell you what someone plans to do. That is not a gap this
+      demo will fill later; it is a claim with no scientific basis.
+    </p>
+
+    <h2>Deliberate omissions</h2>
+    <p>
+      The face-recognition model that ships with this library is <b>not included in this repository</b>, so the app cannot
+      generate identity embeddings, match a face against a watchlist, or link the same person across frames or sessions.
+      The library's binary gender classifier is loaded as part of the age model but is <b>never displayed</b>: it is a
+      two-class output that misclassifies trans and non-binary people by construction and adds nothing to the demo.
+    </p>
+    <p class="see-more">
+      Fuller treatment, including why this codebase stops where it does and what a lawful public-safety system
+      looks like instead: <a href="./docs/SCOPE-AND-LIMITS.md">Scope &amp; limits</a> ·
+      <a href="./docs/SYSTEM-DESIGN.md">System design</a>
+    </p>
+  </div>
+</section>
+
+</main>
+
+<footer class="foot">
+  <span>No video leaves your device. No analytics. No cookies.</span>
+  <span><a href="https://github.com/aamishuvo/facetracker">Source on GitHub</a></span>
+</footer>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script src="./assets/js/vendor/face-api.js"></script>
+<script type="module" src="./assets/js/app.js"></script>
+</body>
+</html>
