@@ -53,6 +53,24 @@ included workflow (`.github/workflows/pages.yml`) publish it on push to `main`.
 `.nojekyll` is committed so that Jekyll does not filter files out of the build,
 and `models/` must ship as-is.
 
+### Troubleshooting a blank or 404 site
+
+**`Get Pages site failed ... Error: Not Found` in the deploy workflow.**
+Pages has never been enabled on the repository, so there is nothing to publish
+to. Merging the code does not enable it. Fix it either way:
+
+- **In settings:** *Settings → Pages → Build and deployment → Source:*
+  **GitHub Actions**. Then re-run the failed run from the *Actions* tab.
+- **In the workflow:** `actions/configure-pages` is configured here with
+  `enablement: true`, which provisions the site over the API on the next run.
+
+**Site is up but the page is blank.** Check that `.nojekyll` is present at the
+repository root. Without it, Jekyll filters files out of the published build.
+
+**Camera button does nothing.** `getUserMedia` requires a secure context. This
+works on `https://` and on `localhost`, but not on a plain `http://` host or a
+`file://` path.
+
 ## What the numbers mean — and don't
 
 This matters more than the feature list.
